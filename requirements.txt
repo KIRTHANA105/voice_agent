@@ -5,6 +5,7 @@ langchain-community==0.3.24
 langchain-google-genai==2.1.5
 langchain-huggingface==0.2.0
 langchain-text-splitters==0.3.8
+langchain-groq==0.3.2
 
 faiss-cpu>=1.12.0
 
@@ -17,5 +18,6 @@ python-docx==1.1.2
 
 SpeechRecognition==3.14.3
 gTTS==2.5.4
+groq==0.24.0
 
 python-dotenv==1.1.0

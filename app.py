@@ -13,13 +13,14 @@ import hashlib
 import streamlit as st
 from dotenv import load_dotenv
 
-from langchain_core.prompts import PromptTemplate
+from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.output_parsers import StrOutputParser
+from langchain_core.runnables import RunnablePassthrough
 from langchain_groq import ChatGroq
 from langchain_community.document_loaders import UnstructuredWordDocumentLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_community.vectorstores import FAISS
 from langchain_huggingface import HuggingFaceEmbeddings
-from langchain_classic.chains import RetrievalQA
 from gtts import gTTS
 import groq as groq_client
 
@@ -193,8 +194,7 @@ def load_vectorstore():
 vectorstore = load_vectorstore()
 
 # ---------------- PROMPT ----------------
-prompt_template = """
-You are a NEET academy assistant.
+prompt_template = """You are a NEET academy assistant.
 
 Answer ONLY from the provided context.
 
@@ -207,24 +207,21 @@ Context:
 Question:
 {question}
 
-Answer:
-"""
+Answer:"""
 
 # ---------------- QA CHAIN ----------------
-PROMPT = PromptTemplate(
-    template=prompt_template,
-    input_variables=["context", "question"]
-)
+prompt = ChatPromptTemplate.from_template(prompt_template)
 
-qa_chain = RetrievalQA.from_chain_type(
-    llm=llm,
-    retriever=vectorstore.as_retriever(
-        search_kwargs={"k": 4}
-    ),
-    chain_type="stuff",
-    chain_type_kwargs={
-        "prompt": PROMPT
-    }
+retriever = vectorstore.as_retriever(search_kwargs={"k": 4})
+
+def format_docs(docs):
+    return "\n\n".join(doc.page_content for doc in docs)
+
+qa_chain = (
+    {"context": retriever | format_docs, "question": RunnablePassthrough()}
+    | prompt
+    | llm
+    | StrOutputParser()
 )
 
 # ---------------- SESSION STATE ----------------
@@ -329,7 +326,7 @@ if user_question:
     # Render and run assistant response
     with st.chat_message("assistant"):
         with st.spinner("Thinking..."):
-            response = qa_chain.run(user_question)
+            response = qa_chain.invoke(user_question)
             st.markdown(response)
             
             # Generate and play TTS audio
