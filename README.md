@@ -25,11 +25,13 @@ Open http://localhost:8501 in your browser.
 
 1. Push this repo to GitHub (do **not** commit `.env` or `myenv/`).
 2. Create a new app at [share.streamlit.io](https://share.streamlit.io) pointing to `app.py`.
-3. Under **Secrets**, add:
+3. In **Advanced settings**, set **Python version to 3.12** (recommended for ML packages).
+4. Under **Secrets**, add:
    ```toml
    GROQ_API_KEY = "your_groq_api_key_here"
    ```
-4. Ensure `knowledge/mastermain.docx` is included in the repo.
+5. Ensure `knowledge/mastermain.docx` is included in the repo.
+6. After changing `requirements.txt`, push to GitHub and **Reboot app**.
 
 ## Project layout
 
