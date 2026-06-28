@@ -10,11 +10,11 @@ import groq as groq_client
 
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_core.messages import HumanMessage, AIMessage
-from langchain_core.output_parsers import StrOutputParser
-from langchain_core.runnables import RunnablePassthrough
+from langchain.chains import create_history_aware_retriever, create_retrieval_chain
+from langchain.chains.combine_documents import create_stuff_documents_chain
 
 from langchain_groq import ChatGroq
-from langchain_community.document_loaders import Docx2txtLoader
+from langchain_community.document_loaders import UnstructuredWordDocumentLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_community.vectorstores import FAISS
 from langchain_huggingface import HuggingFaceEmbeddings
@@ -38,7 +38,7 @@ def load_vectorstore():
         st.error(f"Knowledge file not found: {KNOWLEDGE_DOC}")
         st.stop()
 
-    loader = Docx2txtLoader(str(KNOWLEDGE_DOC))
+    loader = UnstructuredWordDocumentLoader(str(KNOWLEDGE_DOC))
     docs = loader.load()
     splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
     splits = splitter.split_documents(docs)
@@ -69,19 +69,9 @@ def load_chain(retriever_obj):
         MessagesPlaceholder("chat_history"),
         ("human", "{input}"),
     ])
-    contextualize_q_chain = contextualize_q_prompt | llm | StrOutputParser()
-
-    def format_docs(docs):
-        return "\n\n".join(doc.page_content for doc in docs)
-
-    def retrieval_query(inputs):
-        if inputs.get("chat_history"):
-            return contextualize_q_chain.invoke(inputs)
-        return inputs["input"]
-
-    def retrieve_context(inputs):
-        docs = retriever_obj.invoke(retrieval_query(inputs))
-        return format_docs(docs)
+    history_aware_retriever = create_history_aware_retriever(
+        llm, retriever_obj, contextualize_q_prompt
+    )
 
     qa_system_prompt = (
         "You are a helpful and intelligent academy assistant.\n\n"
@@ -113,12 +103,8 @@ def load_chain(retriever_obj):
         ("human", "{input}"),
     ])
 
-    return (
-        RunnablePassthrough.assign(context=retrieve_context)
-        | qa_prompt
-        | llm
-        | StrOutputParser()
-    )
+    question_answer_chain = create_stuff_documents_chain(llm, qa_prompt)
+    return create_retrieval_chain(history_aware_retriever, question_answer_chain)
 
 
 qa_chain = load_chain(retriever)
@@ -220,10 +206,11 @@ if prompt_text:
                 else:
                     chat_history.append(AIMessage(content=m["content"]))
 
-            response = qa_chain.invoke({
+            response_dict = qa_chain.invoke({
                 "input": prompt_text,
                 "chat_history": chat_history,
             })
+            response = response_dict["answer"]
             st.markdown(response)
 
             audio_path = text_to_speech(response)

@@ -21,20 +21,6 @@ streamlit run app.py
 
 Open http://localhost:8501 in your browser.
 
-## Deploy on Streamlit Cloud
-
-1. Push this repo to GitHub (do **not** commit `.env` or `myenv/`).
-2. Create a new app at [share.streamlit.io](https://share.streamlit.io) pointing to `app.py`.
-3. In **Advanced settings**, set **Python version to 3.12** (strongly recommended; Python 3.14 can break some packages).
-4. Under **Secrets**, add:
-   ```toml
-   GROQ_API_KEY = "your_groq_api_key_here"
-   ```
-5. Ensure `knowledge/mastermain.docx` is included in the repo.
-6. After changing `requirements.txt`, push to GitHub and **Reboot app**.
-
-If deploy still fails on Python 3.14, delete the app and redeploy with **Python 3.12** selected in Advanced settings.
-
 ## Project layout
 
 ```
