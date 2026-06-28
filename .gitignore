@@ -1,10 +1,11 @@
 # Environment variables (contains API keys - never commit!)
 .env
 
-# Virtual environment
+# Virtual environments
 .venv/
 venv/
 env/
+myenv/
 
 # Python cache
 __pycache__/
@@ -12,10 +13,13 @@ __pycache__/
 *.pyo
 *.pyd
 
-# Temp files
+# Temp / generated audio
 temp/
 *.mp3
 *.wav
+
+# Word lock files
+~$*.docx
 
 # OS files
 .DS_Store

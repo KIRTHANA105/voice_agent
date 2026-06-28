@@ -1,15 +1,14 @@
 import os
 import tempfile
+from pathlib import Path
+
 from dotenv import load_dotenv
-from operator import itemgetter
 
 import streamlit as st
 from gtts import gTTS
 import groq as groq_client
 
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
-from langchain_core.output_parsers import StrOutputParser
-from langchain_core.runnables import RunnablePassthrough
 from langchain_core.messages import HumanMessage, AIMessage
 from langchain.chains import create_history_aware_retriever, create_retrieval_chain
 from langchain.chains.combine_documents import create_stuff_documents_chain
@@ -20,52 +19,53 @@ from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_community.vectorstores import FAISS
 from langchain_huggingface import HuggingFaceEmbeddings
 
-# ==========================================
-# SETUP PAGE
-# ==========================================
-st.set_page_config(page_title="NEET Academy Assistant", page_icon="🎓")
+BASE_DIR = Path(__file__).resolve().parent
+KNOWLEDGE_DOC = BASE_DIR / "knowledge" / "mastermain.docx"
 
-# ==========================================
-# LOAD ENV
-# ==========================================
-load_dotenv()
+load_dotenv(BASE_DIR / ".env")
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 
-# ==========================================
-# CACHED VECTORSTORE
-# ==========================================
+st.set_page_config(page_title="NEET Academy Assistant", page_icon="🎓")
+
+if not GROQ_API_KEY:
+    st.error("GROQ_API_KEY is missing. Copy `.env.example` to `.env` and add your key.")
+    st.stop()
+
+
 @st.cache_resource
 def load_vectorstore():
-    loader = UnstructuredWordDocumentLoader("knowledge/mastermain.docx")
+    if not KNOWLEDGE_DOC.exists():
+        st.error(f"Knowledge file not found: {KNOWLEDGE_DOC}")
+        st.stop()
+
+    loader = UnstructuredWordDocumentLoader(str(KNOWLEDGE_DOC))
     docs = loader.load()
     splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
     splits = splitter.split_documents(docs)
     embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
-    vectorstore = FAISS.from_documents(splits, embeddings)
-    return vectorstore
+    return FAISS.from_documents(splits, embeddings)
+
 
 vectorstore = load_vectorstore()
 retriever = vectorstore.as_retriever(search_kwargs={"k": 4})
 
-# ==========================================
-# LLM & CHAIN
-# ==========================================
+
 def load_chain(retriever_obj):
     llm = ChatGroq(
         model="llama-3.3-70b-versatile",
         groq_api_key=GROQ_API_KEY,
-        temperature=0
+        temperature=0,
     )
 
-    contextualize_q_system_prompt = (
-        "Given a chat history and the latest user question "
-        "which might reference context in the chat history, "
-        "formulate a standalone question which can be understood "
-        "without the chat history. Do NOT answer the question, "
-        "just reformulate it if needed and otherwise return it as is."
-    )
     contextualize_q_prompt = ChatPromptTemplate.from_messages([
-        ("system", contextualize_q_system_prompt),
+        (
+            "system",
+            "Given a chat history and the latest user question "
+            "which might reference context in the chat history, "
+            "formulate a standalone question which can be understood "
+            "without the chat history. Do NOT answer the question, "
+            "just reformulate it if needed and otherwise return it as is.",
+        ),
         MessagesPlaceholder("chat_history"),
         ("human", "{input}"),
     ])
@@ -104,31 +104,30 @@ def load_chain(retriever_obj):
     ])
 
     question_answer_chain = create_stuff_documents_chain(llm, qa_prompt)
-    rag_chain = create_retrieval_chain(history_aware_retriever, question_answer_chain)
-    return rag_chain
+    return create_retrieval_chain(history_aware_retriever, question_answer_chain)
+
 
 qa_chain = load_chain(retriever)
 
-# ==========================================
-# HELPER FUNCTIONS
-# ==========================================
+
 def speech_to_text(audio_bytes):
     try:
         client = groq_client.Groq(api_key=GROQ_API_KEY)
         with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as temp_audio:
             temp_audio.write(audio_bytes)
             temp_audio_path = temp_audio.name
-            
+
         with open(temp_audio_path, "rb") as f:
             transcription = client.audio.transcriptions.create(
                 file=f,
                 model="whisper-large-v3",
-                response_format="text"
+                response_format="text",
             )
         os.unlink(temp_audio_path)
         return transcription.strip()
     except Exception as e:
         return f"Voice Error: {e}"
+
 
 def text_to_speech(text):
     tts = gTTS(text=text)
@@ -137,27 +136,21 @@ def text_to_speech(text):
     tts.save(temp_path)
     return temp_path
 
-# ==========================================
-# UI
-# ==========================================
+
 st.title("🎓 NEET Academy Assistant")
 st.markdown("Ask questions from the academy knowledge base using text or voice.")
 
-# Initialize chat history
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
-# Initialize audio processing state
 if "last_processed_audio" not in st.session_state:
     st.session_state.last_processed_audio = None
 
-# Clear Chat button
 if st.button("Clear Chat"):
     st.session_state.messages = []
     st.session_state.last_processed_audio = None
     st.rerun()
 
-# Suggestions
 st.markdown("### Suggestions")
 cols = st.columns(3)
 suggestion = None
@@ -168,14 +161,12 @@ if cols[1].button("Courses Available"):
 if cols[2].button("Fee Structure"):
     suggestion = "What is the fee structure?"
 
-# Display chat messages
 for msg in st.session_state.messages:
     with st.chat_message(msg["role"]):
         st.markdown(msg["content"])
         if "audio" in msg and msg["audio"]:
             st.audio(msg["audio"], format="audio/mp3")
 
-# Input methods
 user_input = st.chat_input("Ask your question...")
 audio_input = st.audio_input("🎤 Voice Input")
 
@@ -186,13 +177,11 @@ if suggestion:
 elif user_input:
     prompt_text = user_input
 elif audio_input is not None:
-    # Only process if this is a new audio file
-    if hasattr(audio_input, 'file_id'):
+    if hasattr(audio_input, "file_id"):
         current_audio_id = audio_input.file_id
     else:
-        # Fallback if file_id is not available
         current_audio_id = hash(audio_input.getvalue())
-        
+
     if st.session_state.last_processed_audio != current_audio_id:
         with st.spinner("Transcribing audio..."):
             audio_bytes = audio_input.getvalue()
@@ -203,35 +192,32 @@ elif audio_input is not None:
             prompt_text = None
 
 if prompt_text:
-    # Add user message
     st.session_state.messages.append({"role": "user", "content": prompt_text})
     with st.chat_message("user"):
         st.markdown(prompt_text)
-        
-    # Generate and add assistant message
+
     with st.chat_message("assistant"):
         with st.spinner("Thinking..."):
             history_msgs = st.session_state.messages[:-1]
             chat_history = []
             for m in history_msgs:
-                if m['role'] == 'user':
-                    chat_history.append(HumanMessage(content=m['content']))
+                if m["role"] == "user":
+                    chat_history.append(HumanMessage(content=m["content"]))
                 else:
-                    chat_history.append(AIMessage(content=m['content']))
-            
+                    chat_history.append(AIMessage(content=m["content"]))
+
             response_dict = qa_chain.invoke({
                 "input": prompt_text,
-                "chat_history": chat_history
+                "chat_history": chat_history,
             })
             response = response_dict["answer"]
             st.markdown(response)
-            
-            # Generate Audio
+
             audio_path = text_to_speech(response)
             st.audio(audio_path, format="audio/mp3", autoplay=True)
-            
+
             st.session_state.messages.append({
-                "role": "assistant", 
+                "role": "assistant",
                 "content": response,
-                "audio": audio_path
+                "audio": audio_path,
             })
