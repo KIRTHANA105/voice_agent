@@ -10,8 +10,8 @@ import groq as groq_client
 
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_core.messages import HumanMessage, AIMessage
-from langchain.chains import create_history_aware_retriever, create_retrieval_chain
-from langchain.chains.combine_documents import create_stuff_documents_chain
+from langchain_core.output_parsers import StrOutputParser
+from langchain_core.runnables import RunnablePassthrough
 
 from langchain_groq import ChatGroq
 from langchain_community.document_loaders import Docx2txtLoader
@@ -69,9 +69,19 @@ def load_chain(retriever_obj):
         MessagesPlaceholder("chat_history"),
         ("human", "{input}"),
     ])
-    history_aware_retriever = create_history_aware_retriever(
-        llm, retriever_obj, contextualize_q_prompt
-    )
+    contextualize_q_chain = contextualize_q_prompt | llm | StrOutputParser()
+
+    def format_docs(docs):
+        return "\n\n".join(doc.page_content for doc in docs)
+
+    def retrieval_query(inputs):
+        if inputs.get("chat_history"):
+            return contextualize_q_chain.invoke(inputs)
+        return inputs["input"]
+
+    def retrieve_context(inputs):
+        docs = retriever_obj.invoke(retrieval_query(inputs))
+        return format_docs(docs)
 
     qa_system_prompt = (
         "You are a helpful and intelligent academy assistant.\n\n"
@@ -103,8 +113,12 @@ def load_chain(retriever_obj):
         ("human", "{input}"),
     ])
 
-    question_answer_chain = create_stuff_documents_chain(llm, qa_prompt)
-    return create_retrieval_chain(history_aware_retriever, question_answer_chain)
+    return (
+        RunnablePassthrough.assign(context=retrieve_context)
+        | qa_prompt
+        | llm
+        | StrOutputParser()
+    )
 
 
 qa_chain = load_chain(retriever)
@@ -206,11 +220,10 @@ if prompt_text:
                 else:
                     chat_history.append(AIMessage(content=m["content"]))
 
-            response_dict = qa_chain.invoke({
+            response = qa_chain.invoke({
                 "input": prompt_text,
                 "chat_history": chat_history,
             })
-            response = response_dict["answer"]
             st.markdown(response)
 
             audio_path = text_to_speech(response)
