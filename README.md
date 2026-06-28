@@ -21,6 +21,16 @@ streamlit run app.py
 
 Open http://localhost:8501 in your browser.
 
+## Deploy on Streamlit Cloud
+
+1. Push this repo to GitHub (do **not** commit `.env` or `myenv/`).
+2. Create a new app at [share.streamlit.io](https://share.streamlit.io) pointing to `app.py`.
+3. Under **Secrets**, add:
+   ```toml
+   GROQ_API_KEY = "your_groq_api_key_here"
+   ```
+4. Ensure `knowledge/mastermain.docx` is included in the repo.
+
 ## Project layout
 
 ```

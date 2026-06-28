@@ -14,7 +14,7 @@ from langchain.chains import create_history_aware_retriever, create_retrieval_ch
 from langchain.chains.combine_documents import create_stuff_documents_chain
 
 from langchain_groq import ChatGroq
-from langchain_community.document_loaders import UnstructuredWordDocumentLoader
+from langchain_community.document_loaders import Docx2txtLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_community.vectorstores import FAISS
 from langchain_huggingface import HuggingFaceEmbeddings
@@ -38,7 +38,7 @@ def load_vectorstore():
         st.error(f"Knowledge file not found: {KNOWLEDGE_DOC}")
         st.stop()
 
-    loader = UnstructuredWordDocumentLoader(str(KNOWLEDGE_DOC))
+    loader = Docx2txtLoader(str(KNOWLEDGE_DOC))
     docs = loader.load()
     splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
     splits = splitter.split_documents(docs)
